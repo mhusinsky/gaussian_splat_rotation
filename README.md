@@ -5,4 +5,4 @@ output before rotation: ![output before rotation](https://github.com/yes-its-shi
 output after rotation: ![output after rotation](https://github.com/yes-its-shivam/gaussian_splat_rotation/blob/main/00000_rotated.png)
 
 NOTE:
-the uneven splats at the car base in rotated render is because the scene information was not there originally, not because of rotation
+the uneven splats at the car base in not because of rotation, but because the scene information was not there originally, 
