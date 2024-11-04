@@ -21,44 +21,22 @@ def searchForMaxIteration(folder):
     return max(saved_iters)
 
 def transform_shs(shs_feat, rotation_matrix):
-    P = torch.tensor([[0, 0, 1], [1, 0, 0], [0, 1, 0]],dtype=torch.float32) 
-    permuted_rotation_matrix = torch.linalg.inv(P) @ rotation_matrix @ P
-    rotation_angles = o3._rotation.matrix_to_angles(permuted_rotation_matrix)
-    
-    D1 = o3.wigner_D(1, rotation_angles[0], - rotation_angles[1], rotation_angles[2])
-    D2 = o3.wigner_D(2, rotation_angles[0], - rotation_angles[1], rotation_angles[2])
-    D3 = o3.wigner_D(3, rotation_angles[0], - rotation_angles[1], rotation_angles[2])
 
-    one_degree_shs = shs_feat[:, 0:3]
-    one_degree_shs = einops.rearrange(one_degree_shs, 'n shs_num rgb -> n rgb shs_num')
-    one_degree_shs = einsum(
-            D1,
-            one_degree_shs,
-            "... i j, ... j -> ... i",
-        )
-    one_degree_shs = einops.rearrange(one_degree_shs, 'n rgb shs_num -> n shs_num rgb')
-    shs_feat[:, 0:3] = one_degree_shs
+    ## rotate shs
+    shs_feat = shs_feat.to("cuda")
+    P = torch.tensor([[0, 0, 1], [1, 0, 0], [0, 1, 0]]).float().to('cuda') # switch axes: yzx -> xyz
+    permuted_rotation_matrix = torch.linalg.inv(P) @ rotation_matrix.to('cuda') @ P
+    rot_angles = o3._rotation.matrix_to_angles(permuted_rotation_matrix)
+    rot_angles = [r.cpu() for r in rot_angles]
+    # Construction coefficient
+    D_1 = o3.wigner_D(1, rot_angles[0], -rot_angles[1], rot_angles[2]).to('cuda')
+    D_2 = o3.wigner_D(2, rot_angles[0], -rot_angles[1], rot_angles[2]).to('cuda')
+    D_3 = o3.wigner_D(3, rot_angles[0], -rot_angles[1], rot_angles[2]).to('cuda')
 
-    two_degree_shs = shs_feat[:, 3:8]
-    two_degree_shs = einops.rearrange(two_degree_shs, 'n shs_num rgb -> n rgb shs_num')
-    two_degree_shs = einsum(
-            D2,
-            two_degree_shs,
-            "... i j, ... j -> ... i",
-        )
-    two_degree_shs = einops.rearrange(two_degree_shs, 'n rgb shs_num -> n shs_num rgb')
-    shs_feat[:, 3:8] = two_degree_shs
-
-    three_degree_shs = shs_feat[:, 8:15]
-    three_degree_shs = einops.rearrange(three_degree_shs, 'n shs_num rgb -> n rgb shs_num')
-    three_degree_shs = einsum(
-            D3,
-            three_degree_shs,
-            "... i j, ... j -> ... i",
-        )
-    three_degree_shs = einops.rearrange(three_degree_shs, 'n rgb shs_num -> n shs_num rgb')
-    shs_feat[:, 8:15] = three_degree_shs
-
+    # rotation of the shs features
+    shs_feat[:, 0:3] = D_1 @ shs_feat[:, 0:3]
+    shs_feat[:, 3:8] = D_2 @ shs_feat[:, 3:8]
+    shs_feat[:, 8:15] = D_3 @ shs_feat[:, 8:15]
     return shs_feat
 
 def rotate_splat(args,dataset,rotation_matrix):
@@ -74,7 +52,7 @@ def rotate_splat(args,dataset,rotation_matrix):
         wigner_D_rotated_extra_shs = transform_shs(model.get_features[:, 1:, :].clone().cpu(), rotation_matrix.cpu())
 
         wigner_D_rotated_shs = model.get_features.clone().cpu()
-        wigner_D_rotated_shs[:, 1:, :] = wigner_D_rotated_extra_shs
+        wigner_D_rotated_shs[:, 1:, :] = wigner_D_rotated_extra_shs.cpu()
 
         rotated_xyz = model.get_xyz @ torch.tensor(so3.as_matrix().T, device=model.get_xyz.device, dtype=torch.float)
         rotated_rotations = torch.nn.functional.normalize(GaussianTransformUtils.quat_multiply(
